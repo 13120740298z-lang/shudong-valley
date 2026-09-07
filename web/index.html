@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>树洞谷 · 一座住着知乎居民的像素小镇</title>
+<meta name="description" content="扮演你的角色，住进一座像素小镇。八位有记忆、有日程的居民在此生活，还能用一句话邀请新居民入住。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌲</text></svg>">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<div id="hud" class="hud" hidden>
+  <div class="hud-left">
+    <span class="hud-area" id="hudArea">谷口</span>
+    <span class="hud-phase" id="hudPhase">上午</span>
+  </div>
+  <div class="hud-right">
+    <button class="hbtn" data-panel="hot" title="公告栏·知乎热榜">📋 公告栏</button>
+    <button class="hbtn" data-panel="library" title="知乎知识书架">📚 图书馆</button>
+    <button class="hbtn" data-panel="hall" title="镇长热线与邀请居民">🏛️ 镇公所</button>
+    <button class="hbtn" data-panel="book" title="灵感碎片图鉴">✨ 图鉴</button>
+  </div>
+</div>
+<div class="hint" id="hint" hidden>WASD / 点击移动 · 走近居民按 <b>E</b> 交谈</div>
+<div class="ticker" id="ticker" hidden></div>
+
+<!-- 对话框 -->
+<div id="dialog" class="dialog" hidden>
+  <div class="dialog-head">
+    <img id="dlgAvatar" class="dlg-avatar" alt="">
+    <div class="dlg-who">
+      <b id="dlgName">居民</b>
+      <i id="dlgTitle">居民</i>
+      <div class="dlg-mem" id="dlgMem"></div>
+    </div>
+    <button class="dlg-close" id="dlgClose">✕</button>
+  </div>
+  <div class="dlg-log" id="dlgLog"></div>
+  <div class="dlg-input">
+    <input id="dlgText" maxlength="120" placeholder="说点什么…（Enter 发送）">
+    <button id="dlgSend">➤</button>
+  </div>
+</div>
+
+<!-- 面板 -->
+<div id="panel" class="panel" hidden>
+  <div class="panel-box">
+    <div class="panel-head">
+      <b id="panelTitle">面板</b>
+      <button class="dlg-close" id="panelClose">✕</button>
+    </div>
+    <div class="panel-body" id="panelBody"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toasts" class="toasts"></div>
+
+<!-- 入住界面 -->
+<div id="join" class="join">
+  <div class="join-box">
+    <div class="join-sky">
+      <div class="join-trees">🌲🌲🌲🌲🌲🌲🌲🌲</div>
+      <h1>树 洞 谷</h1>
+      <p class="join-sub">一座住着知乎居民的像素小镇</p>
+    </div>
+    <div class="join-form">
+      <label>给自己起个名字</label>
+      <input id="joinName" maxlength="8" placeholder="比如：小满">
+      <label>你现在的状态（影响开局开场白）</label>
+      <div class="join-arches" id="joinArches">
+        <button class="arch on" data-v="kaoyan">📚 卷学历</button>
+        <button class="arch" data-v="dachang">💻 搬砖中</button>
+        <button class="arch" data-v="beipiao">🌃 漂着</button>
+        <button class="arch" data-v="luoci">🎒 换轨</button>
+      </div>
+      <label>发色</label>
+      <div class="join-hairs" id="joinHairs">
+        <button class="hair on" data-v="#2B2B3A" style="--c:#2B2B3A"></button>
+        <button class="hair" data-v="#6B4226" style="--c:#6B4226"></button>
+        <button class="hair" data-v="#B4633A" style="--c:#B4633A"></button>
+        <button class="hair" data-v="#4A6FA5" style="--c:#4A6FA5"></button>
+        <button class="hair" data-v="#7A6CFF" style="--c:#7A6CFF"></button>
+        <button class="hair" data-v="#C76B84" style="--c:#C76B84"></button>
+      </div>
+      <button class="join-btn" id="joinBtn">搬进树洞谷</button>
+      <p class="join-note" id="joinNote"></p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>
