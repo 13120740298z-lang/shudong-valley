@@ -1,5 +1,6 @@
 node server.log
 server/*.log
-web/engine/game.js.bak
+server/data/
+*.json.tmp
 .DS_Store
 *.log
