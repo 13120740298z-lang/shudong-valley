@@ -81,6 +81,30 @@ export function buildMap() {
   return { grid: g, tiles: T, buildings, spawn: { x: 6, y: 26 }, plaza: { x: 20, y: 17 } };
 }
 
+// 环境装饰点位（kind: tree/lantern/bench/well/sign/rock/bush）
+// 不入碰撞（树除外——树的 tile 本身就是 TREE）
+export const PROPS = [
+  // 路灯（广场四角 + 主路）
+  { kind: 'lantern', x: 16.5, y: 15 }, { kind: 'lantern', x: 23.5, y: 15 },
+  { kind: 'lantern', x: 16.5, y: 20 }, { kind: 'lantern', x: 23.5, y: 20 },
+  { kind: 'lantern', x: 14, y: 14 }, { kind: 'lantern', x: 26, y: 14 },
+  // 广场长椅与水井
+  { kind: 'bench', x: 18.5, y: 16 }, { kind: 'bench', x: 21.5, y: 16 },
+  { kind: 'well', x: 20, y: 17 },
+  // 指示牌
+  { kind: 'sign', x: 8, y: 24 }, { kind: 'sign', x: 30, y: 21 },
+  // 石头与灌木
+  { kind: 'rock', x: 10.5, y: 11.5 }, { kind: 'rock', x: 25.5, y: 22.5 }, { kind: 'rock', x: 36.5, y: 13.5 },
+  { kind: 'bush', x: 13.5, y: 24.5 }, { kind: 'bush', x: 31.5, y: 8.5 }, { kind: 'bush', x: 7.5, y: 13.5 },
+  { kind: 'bush', x: 26.5, y: 25.5 }, { kind: 'bush', x: 37.5, y: 26.5 }
+];
+
+// 独立大树（非边界树墙，参与排序遮挡）
+export const BIG_TREES = [
+  [4, 10], [9, 6], [26, 5], [35, 8], [40, 12],
+  [4, 30], [12, 30], [25, 30], [41, 28], [16, 10]
+];
+
 export const AREA_LABELS = {
   spawn: { x: 6, y: 26, r: 3, name: '谷口' },
   plaza: { x: 20, y: 17, r: 4, name: '中心广场' },

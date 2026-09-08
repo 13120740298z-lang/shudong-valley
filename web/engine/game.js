@@ -1,13 +1,16 @@
-// 树洞谷游戏主引擎：静态层构建、渲染循环、玩家/NPC 移动、寻路、交互
-// 世界数据由 /api/world 获取（grid/tiles/buildings/residents）
+// 树洞谷游戏主引擎 v2：静态地表层 + 动态遮挡排序层（建筑/树/装饰/角色）
+// 世界数据由 /api/world 获取
 
-import { paintTile, paintBuilding, makeCharacterSheet, shade } from './sprite.js';
+import {
+  paintTile, makeTree, makeBuilding, makeLantern, makeBench, makeWell, makeSign, makeRock, makeBush,
+  makeCharacterSheet, CHAR_W, CHAR_H
+} from './sprite.js';
 
 export const TILE = 16, SCALE = 3;
-const WALK_MS = 170; // 每 tile 行走耗时
+const WALK_MS = 170;
 
 export function createGame(canvas, world, opts) {
-  const { onPrompt, onFragment } = opts;
+  const { onFragment } = opts;
   const { grid, tiles, W, H } = world;
   const g = grid;
 
@@ -16,31 +19,55 @@ export function createGame(canvas, world, opts) {
     return t !== undefined && t !== tiles.TREE && t !== tiles.WALL && t !== tiles.WATER;
   };
 
-  // ---------- 静态层（整图一次绘制） ----------
+  // ---------- 精灵预渲染 ----------
+  const treeSprites = [makeTree(1), makeTree(2), makeTree(3)];
+  const buildingSprites = Object.fromEntries(
+    Object.entries(world.buildings).map(([k, b]) => [k, { ...b, key: k, sp: makeBuilding(k) }])
+  );
+  const propSprites = {
+    lantern: makeLantern(), bench: makeBench(), well: makeWell(),
+    sign: makeSign(), rock: makeRock(), bush: makeBush()
+  };
+
+  // ---------- 静态地表层 ----------
   const staticCv = document.createElement('canvas');
   staticCv.width = W * TILE; staticCv.height = H * TILE;
-  {
-    const c = staticCv.getContext('2d');
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) paintTile(c, g[y][x], x, y, tiles);
-    for (const b of Object.values(world.buildings)) paintBuilding(c, b.key ?? b.sign ?? 'farm', b.x, b.y);
-    // 公告栏（广场北）
+  const sc = staticCv.getContext('2d');
+  let waterFrame = 0;
+  function paintStatic() {
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) paintTile(sc, g[y][x], x, y, tiles, waterFrame);
+    // 公告栏（广场北，贴地）
     const bx = 22 * TILE, by = 14 * TILE;
-    c.fillStyle = '#6B4A2B'; c.fillRect(bx + 2, by + 6, 12, 10);
-    c.fillStyle = '#F2E7C8'; c.fillRect(bx + 3, by + 7, 10, 7);
-    c.fillStyle = '#C4553B'; c.fillRect(bx + 4, by + 8, 6, 2);
-    c.fillStyle = '#4A6FA5'; c.fillRect(bx + 4, by + 11, 8, 2);
-    c.fillStyle = '#6B4A2B'; c.fillRect(bx + 3, by + 16, 2, 6); c.fillRect(bx + 11, by + 16, 2, 6);
+    sc.fillStyle = '#6B4A2B'; sc.fillRect(bx + 2, by + 6, 12, 10);
+    sc.fillStyle = '#F2E7C8'; sc.fillRect(bx + 3, by + 7, 10, 7);
+    sc.fillStyle = '#C4553B'; sc.fillRect(bx + 4, by + 8, 6, 2);
+    sc.fillStyle = '#4A6FA5'; sc.fillRect(bx + 4, by + 11, 8, 2);
+    sc.fillStyle = '#6B4A2B'; sc.fillRect(bx + 3, by + 16, 2, 6); sc.fillRect(bx + 11, by + 16, 2, 6);
+    // 边界树墙（静态：角色永远不会到其后方）
+    const borderTree = treeSprites[0];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (g[y][x] === tiles.TREE && (x < 2 || y < 2 || x >= W - 2 || y >= H - 2)) {
+        sc.drawImage(borderTree.cv, x * TILE - 8, y * TILE - 24);
+      }
+    }
   }
+  paintStatic();
+  // 水面两帧动画
+  setInterval(() => {
+    waterFrame = 1 - waterFrame;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (g[y][x] === tiles.WATER || g[y][x] === tiles.BRIDGE || g[y][x] === tiles.SAND) paintTile(sc, g[y][x], x, y, tiles, waterFrame);
+    }
+  }, 900);
 
   // ---------- 实体 ----------
   const npcs = world.residents.map((r) => ({
     ...r,
     sheet: makeCharacterSheet(r),
     tx: r.schedule.morning.x, ty: r.schedule.morning.y,
-    fx: r.schedule.morning.x, fy: r.schedule.morning.y, // 像素插值位置（tile 浮点）
+    fx: r.schedule.morning.x, fy: r.schedule.morning.y,
     dir: 'down', frame: 0, animT: 0,
-    moving: null, // {fx0,fy0,fx1,fy1,t0}
-    path: [], wanderT: 0, greetedT: 0
+    moving: null, path: [], wanderT: 0, greetedT: 0, bubble: null
   }));
 
   const player = {
@@ -50,13 +77,13 @@ export function createGame(canvas, world, opts) {
     sheet: null, hair: '#2B2B3A'
   };
 
-  // 灵感碎片
   const FRAG_SPOTS = [[15, 13], [25, 12], [13, 24], [33, 25], [9, 13], [24, 24], [35, 21], [7, 17], [28, 20], [21, 25]];
   const collected = new Set(JSON.parse(localStorage.getItem('sv_frags') || '[]'));
   const frags = FRAG_SPOTS.map(([x, y], i) => ({ i, x, y, taken: collected.has(i) }));
 
-  // ---------- 寻路（BFS） ----------
+  // ---------- 寻路 ----------
   function findPath(sx, sy, gx, gy) {
+    sx = Math.round(sx); sy = Math.round(sy);
     if (!walkable(gx, gy)) return null;
     const key = (x, y) => y * W + x;
     const prev = new Map();
@@ -83,9 +110,8 @@ export function createGame(canvas, world, opts) {
     const t = Math.min(1, (performance.now() - e.moving.t0) / WALK_MS);
     e.fx = e.moving.fx0 + (e.moving.fx1 - e.moving.fx0) * t;
     e.fy = e.moving.fy0 + (e.moving.fy1 - e.moving.fy0) * t;
-    e.tx = e.moving.fx1; e.ty = e.moving.fy1;
     e.animT += dt;
-    e.frame = e.animT % 300 < 150 ? 1 : 2;
+    e.frame = Math.floor(e.animT / 130) % 4;
     if (t >= 1) { e.moving = null; e.frame = 0; }
   }
 
@@ -98,7 +124,7 @@ export function createGame(canvas, world, opts) {
   function walkPath(e) {
     if (e.moving || !e.path.length) return false;
     const [nx, ny] = e.path[0];
-    if ((nx === e.tx && ny === e.ty)) { e.path.shift(); return walkPath(e); }
+    if (nx === e.tx && ny === e.ty) { e.path.shift(); return walkPath(e); }
     if (!walkable(nx, ny)) { e.path = []; return false; }
     e.path.shift();
     startStep(e, nx, ny);
@@ -126,14 +152,12 @@ export function createGame(canvas, world, opts) {
     return null;
   }
 
-  // 点击移动
   function clickMove(evt) {
     if (opts.dialogOpen()) return;
     const rect = canvas.getBoundingClientRect();
     const sx = evt.clientX - rect.left, sy = evt.clientY - rect.top;
     const wx = camX + sx / SCALE, wy = camY + sy / SCALE;
     const tx = Math.floor(wx / TILE), ty = Math.floor(wy / TILE);
-    // 点到居民：走近并开口
     const npc = npcs.find((n) => Math.abs(n.fx - tx) < 0.6 && Math.abs(n.fy - ty) < 0.9);
     if (npc) { opts.onNpcClick(npc); return; }
     const path = findPath(player.tx, player.ty, tx, ty);
@@ -142,6 +166,7 @@ export function createGame(canvas, world, opts) {
 
   // ---------- NPC 日程 ----------
   let lastPhase = world.serverPhase;
+  const phaseMap = (p) => ({ '清晨': 'morning', '上午': 'morning', '午后': 'noon', '黄昏': 'evening', '夜晚': 'night', '深夜': 'night' }[p] || 'morning');
   function scheduleCheck(phase) {
     if (phase === lastPhase) return;
     lastPhase = phase;
@@ -150,7 +175,6 @@ export function createGame(canvas, world, opts) {
       if (anchor) n.path = findPath(n.tx, n.ty, anchor.x, anchor.y) || [];
     }
   }
-  const phaseMap = (p) => ({ '清晨': 'morning', '上午': 'morning', '午后': 'noon', '黄昏': 'evening', '夜晚': 'night', '深夜': 'night' }[p] || 'morning');
 
   function npcAI(dt, phase) {
     for (const n of npcs) {
@@ -158,7 +182,6 @@ export function createGame(canvas, world, opts) {
       if (!n.moving) {
         walkPath(n);
         if (!n.path.length) {
-          // 锚点闲逛
           n.wanderT -= dt;
           if (n.wanderT <= 0) {
             n.wanderT = 2500 + Math.random() * 3500;
@@ -169,22 +192,18 @@ export function createGame(canvas, world, opts) {
           }
         }
       }
-      // 靠近玩家主动搭话
       const d = Math.hypot(n.fx - player.fx, n.fy - player.fy);
       n.greetedT -= dt;
       if (d < 3.2 && d > 0.4 && n.greetedT <= 0 && !opts.dialogOpen()) {
         n.greetedT = 50000 + Math.random() * 40000;
-        n.bubble = { text: pickGreeting(n), t: 4200 };
+        const pool = n.greeting ? [n.greeting] : (n.greetings || ['……']);
+        n.bubble = { text: pool[Math.floor(Math.random() * pool.length)], t: 4200 };
       }
       if (n.bubble) { n.bubble.t -= dt; if (n.bubble.t <= 0) n.bubble = null; }
     }
   }
-  const pickGreeting = (n) => {
-    const pool = n.greeting ? [n.greeting] : (n.greetings || ['……']);
-    return pool[Math.floor(Math.random() * pool.length)];
-  };
 
-  // ---------- 相机与渲染 ----------
+  // ---------- 相机 ----------
   let camX = 0, camY = 0;
   function updateCamera() {
     const vw = canvas.width / SCALE, vh = canvas.height / SCALE;
@@ -192,33 +211,122 @@ export function createGame(canvas, world, opts) {
     camY = Math.max(0, Math.min(H * TILE - vh, player.fy * TILE + TILE / 2 - vh / 2));
   }
 
+  // ---------- 绘制 ----------
   function drawChar(c, sheet, fx, fy, dir, frame) {
     const dirCol = { down: 0, right: 1, up: 2, left: 3 }[dir] ?? 0;
-    const px = fx * TILE, py = fy * TILE - 4; // 角色高于 tile
-    // 影子
-    c.fillStyle = 'rgba(0,0,0,.18)';
-    c.beginPath();
-    c.ellipse(px + 8, py + 20, 5, 2, 0, 0, Math.PI * 2);
-    c.fill();
+    const px = Math.round(fx * TILE + 8 - CHAR_W / 2);
+    const py = Math.round(fy * TILE + 16 - CHAR_H - 1);
+    c.fillStyle = 'rgba(0,0,0,.2)';
+    c.beginPath(); c.ellipse(fx * TILE + 8, fy * TILE + 15, 6, 2.4, 0, 0, Math.PI * 2); c.fill();
     c.save();
     c.translate(px, py);
     if (dir === 'left') {
-      c.translate(16, 0);
-      c.scale(-1, 1);
-      c.drawImage(sheet, 1 * 16, frame * 20, 16, 20, 0, 0, 16, 20);
+      c.translate(CHAR_W, 0); c.scale(-1, 1);
+      c.drawImage(sheet, 1 * CHAR_W, frame * CHAR_H, CHAR_W, CHAR_H, 0, 0, CHAR_W, CHAR_H);
     } else {
-      c.drawImage(sheet, dirCol * 16, frame * 20, 16, 20, 0, 0, 16, 20);
+      c.drawImage(sheet, dirCol * CHAR_W, frame * CHAR_H, CHAR_W, CHAR_H, 0, 0, CHAR_W, CHAR_H);
     }
     c.restore();
+  }
+
+  // 烟囱粒子源（由建筑精灵登记）
+  const chimneys = Object.values(buildingSprites).flatMap((b) => {
+    const dx = b.x * TILE - 12, dy = b.y * TILE - 46;
+    return (b.sp.chimneys || []).map(([cx2, cy2]) => ({ wx: dx + cx2 + 5, wy: dy + cy2 }));
+  });
+  let smokeT = 0;
+  const smokes = [];
+  const fireflies = Array.from({ length: 8 }, (_, i) => ({ x: 6 + rnd01(i, 1) * 30, y: 6 + rnd01(i, 2) * 22, ph: i * 1.7 }));
+  function rnd01(a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967295; }
+
+  function drawSorted(c, now) {
+    const items = [];
+    for (const b of Object.values(buildingSprites)) {
+      items.push({
+        ay: b.y * TILE + 64,
+        draw: () => c.drawImage(b.sp.cv, b.x * TILE - 12, b.y * TILE - 46)
+      });
+    }
+    for (const [tx, ty] of world.bigTrees || []) {
+      const sp = treeSprites[(tx * 7 + ty * 3) % 3];
+      items.push({ ay: ty * TILE + 16, draw: () => c.drawImage(sp.cv, tx * TILE - 8, ty * TILE - 24) });
+    }
+    for (const p of world.props || []) {
+      const sp = propSprites[p.kind];
+      if (!sp) continue;
+      const px = p.x * TILE, py = p.y * TILE;
+      items.push({
+        ay: p.y * TILE + 14,
+        draw: () => c.drawImage(sp.cv, Math.round(px - sp.ax), Math.round(py - sp.ay))
+      });
+    }
+    const tw = Math.sin(now / 300) * 0.5 + 0.5;
+    for (const f of frags) {
+      if (f.taken) continue;
+      items.push({
+        ay: f.y * TILE + 8,
+        draw: () => {
+          const fxp = f.x * TILE + 8, fyp = f.y * TILE + 6 - tw * 2;
+          c.fillStyle = '#F7D14C';
+          star(c, fxp, fyp, 3.4 + tw, 1.8);
+          c.fillStyle = 'rgba(255,255,255,.95)';
+          c.fillRect(fxp - 1, fyp - 1, 1, 1);
+        }
+      });
+    }
+    for (const n of npcs) items.push({ ay: n.fy * TILE + 15, draw: () => drawChar(c, n.sheet, n.fx, n.fy, n.dir, n.moving ? n.frame : 0) });
+    items.push({ ay: player.fy * TILE + 15, draw: () => drawChar(c, player.sheet, player.fx, player.fy, player.dir, player.moving ? player.frame : 0) });
+
+    items.sort((a, b) => a.ay - b.ay);
+    for (const it of items) it.draw();
+  }
+
+  function drawBubblesAndLabels(c) {
+    c.font = '5px sans-serif';
+    c.textAlign = 'center';
+    for (const n of npcs) {
+      const sx = n.fx * TILE + 8, sy = n.fy * TILE + 16 - CHAR_H - 6;
+      const nw = c.measureText(n.name).width;
+      c.fillStyle = 'rgba(0,0,0,.45)';
+      c.fillRect(sx - nw / 2 - 2, sy - 7, nw + 4, 7);
+      c.fillStyle = '#FFFFFF';
+      c.fillText(n.name, sx, sy - 2);
+      const d = Math.hypot(n.fx - player.fx, n.fy - player.fy);
+      if (d < 1.8 && !opts.dialogOpen()) {
+        c.fillStyle = '#FFF6DE';
+        c.fillText('E', sx, sy - 10);
+      }
+      if (n.bubble) drawBubble(c, sx, sy - 12, n.bubble.text);
+    }
+    const sx = player.fx * TILE + 8, sy = player.fy * TILE + 16 - CHAR_H - 6;
+    const pw = c.measureText(player.name).width;
+    c.fillStyle = 'rgba(0,0,0,.45)';
+    c.fillRect(sx - pw / 2 - 2, sy - 7, pw + 4, 7);
+    c.fillStyle = '#FFE27A';
+    c.fillText(player.name, sx, sy - 2);
+  }
+
+  function drawBubble(c, x, y, text) {
+    c.font = '5px sans-serif';
+    const w = Math.min(130, c.measureText(text).width + 8);
+    c.fillStyle = 'rgba(255,252,240,.96)';
+    roundRect(c, x - w / 2, y - 12, w, 12, 3);
+    c.fill();
+    c.strokeStyle = '#B8A98C';
+    c.lineWidth = 0.6;
+    roundRect(c, x - w / 2, y - 12, w, 12, 3);
+    c.stroke();
+    c.fillStyle = '#4A3B28';
+    c.textAlign = 'center';
+    c.fillText(ellipsis(c, text, w - 6), x, y - 3.5);
   }
 
   let last = performance.now();
   function tick(now) {
     const dt = Math.min(64, now - last); last = now;
-    if (!player.sheet) return; // 精灵就绪前不绘制
+    if (!player.sheet) return;
     const phase = opts.phase();
 
-    // 玩家移动
     stepAlong(player, dt);
     if (!player.moving && !opts.dialogOpen()) {
       walkPath(player);
@@ -234,7 +342,6 @@ export function createGame(canvas, world, opts) {
     npcAI(dt, phase);
     scheduleCheck(phase);
 
-    // 碎片拾取
     for (const f of frags) {
       if (!f.taken && Math.abs(player.fx - f.x) < 0.6 && Math.abs(player.fy - f.y) < 0.6) {
         f.taken = true; collected.add(f.i);
@@ -245,96 +352,85 @@ export function createGame(canvas, world, opts) {
 
     updateCamera();
 
-    // 绘制
     const c = canvas.getContext('2d');
     c.imageSmoothingEnabled = false;
     const vw = canvas.width / SCALE, vh = canvas.height / SCALE;
-    c.fillStyle = PAL_DARKBG;
+    c.fillStyle = '#1E2430';
     c.fillRect(0, 0, canvas.width, canvas.height);
     c.drawImage(staticCv, camX, camY, vw, vh, 0, 0, canvas.width, canvas.height);
+
     c.save();
     c.scale(SCALE, SCALE);
     c.translate(-camX, -camY);
 
-    // 碎片
-    const tw = Math.sin(now / 300) * 0.5 + 0.5;
-    for (const f of frags) {
-      if (f.taken) continue;
-      const fxp = f.x * TILE + 8, fyp = f.y * TILE + 6 - tw * 2;
-      c.fillStyle = '#F7D14C';
-      star(c, fxp, fyp, 3 + tw, 1.6);
-      c.fillStyle = 'rgba(255,255,255,.9)';
-      c.fillRect(fxp - 1, fyp - 1, 1, 1);
+    drawSorted(c, now);
+
+    // 烟囱烟
+    smokeT += dt;
+    if (smokeT > 500 && chimneys.length) {
+      smokeT = 0;
+      const src = chimneys[Math.floor(Math.random() * chimneys.length)];
+      smokes.push({ x: src.wx, y: src.wy, t: 0, drift: (Math.random() - 0.5) * 3 });
+    }
+    for (let i = smokes.length - 1; i >= 0; i--) {
+      const s = smokes[i];
+      s.t += dt;
+      const a = Math.max(0, 0.5 - s.t / 4000);
+      if (a <= 0) { smokes.splice(i, 1); continue; }
+      c.fillStyle = `rgba(235,235,225,${a})`;
+      const r = 1.5 + s.t / 900;
+      c.beginPath(); c.arc(s.x + s.drift * (s.t / 1000), s.y - s.t / 90, r, 0, Math.PI * 2); c.fill();
     }
 
-    // 居民（按 y 排序与玩家合层）
-    const drawables = [...npcs.map((n) => ({ e: n, sheet: n.sheet })), { e: player, sheet: player.sheet }];
-    drawables.sort((a, b) => a.e.fy - b.e.fy);
-    for (const { e, sheet } of drawables) {
-      drawChar(c, sheet, e.fx, e.fy, e.dir, e.frame);
-      if (e.name) {
-        c.font = '5px sans-serif';
-        c.textAlign = 'center';
-        c.fillStyle = 'rgba(0,0,0,.45)';
-        const tw2 = c.measureText(e.name).width;
-        c.fillRect(e.fx * TILE + 8 - tw2 / 2 - 2, e.fy * TILE - 10, tw2 + 4, 7);
-        c.fillStyle = e === player ? '#FFE27A' : '#FFFFFF';
-        c.fillText(e.name, e.fx * TILE + 8, e.fy * TILE - 4.5);
-      }
-      // 交互提示与气泡
-      const d = Math.hypot(e.fx - player.fx, e.fy - player.fy);
-      if (e !== player && d < 1.8 && !opts.dialogOpen()) {
-        c.fillStyle = '#FFF6DE';
-        c.font = '5px sans-serif';
-        c.textAlign = 'center';
-        c.fillText('E', e.fx * TILE + 8, e.fy * TILE - 13);
-      }
-      if (e.bubble) drawBubble(c, e.fx * TILE + 8, e.fy * TILE - 14, e.bubble.text);
-    }
-
-    // 夜晚光照
-    const ph = phase;
-    if (ph === '黄昏') { c.fillStyle = 'rgba(255,140,60,.16)'; c.fillRect(camX, camY, vw, vh); }
-    if (ph === '夜晚' || ph === '深夜') {
-      c.fillStyle = 'rgba(20,30,80,.38)';
+    // 夜晚：路灯 + 窗光 + 萤火虫
+    const night = phase === '夜晚' || phase === '深夜';
+    if (phase === '黄昏') { c.fillStyle = 'rgba(255,140,60,.15)'; c.fillRect(camX, camY, vw, vh); }
+    if (night) {
+      c.fillStyle = 'rgba(18,28,72,.42)';
       c.fillRect(camX, camY, vw, vh);
-      // 窗光
-      c.fillStyle = 'rgba(255,230,150,.55)';
-      for (const b of Object.values(world.buildings)) {
-        c.fillRect(b.x * 16 + 10, b.y * 16 + 23, 8, 6);
-        c.fillRect(b.x * 16 + 62, b.y * 16 + 23, 8, 6);
+      for (const p of world.props || []) {
+        if (p.kind !== 'lantern') continue;
+        const lx = p.x * TILE, ly = p.y * TILE - 24;
+        const gr = c.createRadialGradient(lx, ly, 2, lx, ly, 34);
+        gr.addColorStop(0, 'rgba(255,214,110,.5)');
+        gr.addColorStop(1, 'rgba(255,214,110,0)');
+        c.fillStyle = gr;
+        c.fillRect(lx - 34, ly - 34, 68, 68);
+        c.fillStyle = '#FFF0B8';
+        c.beginPath(); c.arc(lx, ly, 2.4, 0, Math.PI * 2); c.fill();
+      }
+      for (const b of Object.values(buildingSprites)) {
+        const cx = b.x * TILE + 40, cy = b.y * TILE + 8;
+        const gr = c.createRadialGradient(cx, cy, 4, cx, cy, 46);
+        gr.addColorStop(0, 'rgba(255,214,130,.22)');
+        gr.addColorStop(1, 'rgba(255,214,130,0)');
+        c.fillStyle = gr;
+        c.fillRect(cx - 46, cy - 46, 92, 92);
+      }
+      for (const ff of fireflies) {
+        const t = now / 1000;
+        const fxp = (ff.x + Math.sin(t * 0.7 + ff.ph) * 2.5) * TILE;
+        const fyp = (ff.y + Math.cos(t * 0.5 + ff.ph) * 1.8) * TILE;
+        const blink = 0.35 + 0.65 * Math.abs(Math.sin(t * 2 + ff.ph * 3));
+        c.fillStyle = `rgba(220,255,140,${0.75 * blink})`;
+        c.beginPath(); c.arc(fxp, fyp, 1.2, 0, Math.PI * 2); c.fill();
+        c.fillStyle = `rgba(220,255,140,${0.25 * blink})`;
+        c.beginPath(); c.arc(fxp, fyp, 3, 0, Math.PI * 2); c.fill();
       }
     }
+
+    drawBubblesAndLabels(c);
     c.restore();
   }
   function loop(now) { tick(now); raf = requestAnimationFrame(loop); }
-  const PAL_DARKBG = '#1E2430';
   let raf = requestAnimationFrame(loop);
-  // 后台兜底：标签页不可见时 rAF 暂停，用 interval 保持世界运转（约 12fps）
-  const bgTimer = setInterval(() => {
-    if (performance.now() - last > 220) tick(performance.now());
-  }, 80);
-
-  function drawBubble(c, x, y, text) {
-    c.font = '5px sans-serif';
-    const w = Math.min(120, c.measureText(text).width + 8);
-    c.fillStyle = 'rgba(255,252,240,.95)';
-    roundRect(c, x - w / 2, y - 12, w, 12, 3);
-    c.fill();
-    c.strokeStyle = '#B8A98C';
-    c.lineWidth = 0.6;
-    roundRect(c, x - w / 2, y - 12, w, 12, 3);
-    c.stroke();
-    c.fillStyle = '#4A3B28';
-    c.textAlign = 'center';
-    c.fillText(ellipsis(c, text, w - 6), x, y - 3.5);
-  }
+  const bgTimer = setInterval(() => { if (performance.now() - last > 220) tick(performance.now()); }, 80);
 
   return {
     player,
     setPlayer(p) { player.name = p.name; player.hair = p.hair; player.sheet = makeCharacterSheet({ hair: p.hair, cloth: '#EAF0FF', skin: '#F2C9A0' }); },
     addNpc(r) {
-      const n = { ...r, sheet: makeCharacterSheet(r), tx: r.schedule.morning.x, ty: r.schedule.morning.y, fx: r.schedule.morning.x, fy: r.schedule.morning.y, dir: 'down', frame: 0, animT: 0, moving: null, path: [], wanderT: 0, greetedT: 0 };
+      const n = { ...r, sheet: makeCharacterSheet(r), tx: r.schedule.morning.x, ty: r.schedule.morning.y, fx: r.schedule.morning.x, fy: r.schedule.morning.y, dir: 'down', frame: 0, animT: 0, moving: null, path: [], wanderT: 0, greetedT: 0, bubble: null };
       npcs.push(n);
       return n;
     },
@@ -379,4 +475,3 @@ function ellipsis(c, text, maxW) {
   while (c.measureText(t).width > maxW && t.length > 1) t = t.slice(0, -1);
   return t + (t.length < String(text).length ? '…' : '');
 }
-export { shade };
