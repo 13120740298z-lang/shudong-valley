@@ -1,5 +1,9 @@
 // 树洞谷前端：入住流程 → 游戏循环 → 对话/面板/SSE
-import { createGame, TILE, fitScreen } from './engine/game.js';
+// 渲染引擎：默认 3D（HD-2D，可旋转视角）；URL 加 ?2d 回退经典 2D
+const USE_2D = new URLSearchParams(location.search).has('2d');
+const engineMod = USE_2D ? './engine/game.js' : './engine/game3d.js';
+const enginePromise = import(engineMod);
+const { createGame, TILE, fitScreen } = await enginePromise;
 import { createAudio } from './engine/audio.js';
 import { makeCharacterSheet, makeAvatar } from './engine/sprite.js';
 
@@ -85,9 +89,10 @@ async function enterWorld() {
   state.phase = state.world.serverPhase;
   state.game = createGame(canvas, state.world, {
     dialogOpen: () => !$('#dialog').hidden,
-    phase: () => state.phase,
+    phase: () => { const lp = localPhase(); if (lp !== state.phase) state.phase = lp; return state.phase; },
+    areaName,
     onNpcClick: (npc) => openDialog(npc),
-    onFragment: (f) => { toast(`✨ 捡到一枚灵感碎片（${collectCount()}/${state.game.frags.length}）`); }
+    onFragment: (f) => { toast(`✨ 捣到一枚灵感碎片（${collectCount()}/${state.game.frags.length}）`); }
   });
   state.game.setPlayer(state.player);
   window.__svGame = state.game;
@@ -372,10 +377,14 @@ function resize() { fitScreen(canvas); }
 window.addEventListener('resize', resize);
 
 // 时段跟随本地时钟（与服务端一致口径）
-setInterval(() => {
+// 注意：后台标签页 setInterval 会被节流，改在游戏主循环里每帧同步（见 createGame opts.phase）
+function localPhase() {
   const h = new Date().getHours();
-  state.phase = h < 6 ? '深夜' : h < 9 ? '清晨' : h < 12 ? '上午' : h < 16 ? '午后' : h < 19 ? '黄昏' : '夜晚';
-}, 10000);
+  return h < 6 ? '深夜' : h < 9 ? '清晨' : h < 12 ? '上午' : h < 16 ? '午后' : h < 19 ? '黄昏' : '夜晚';
+}
+setInterval(() => { state.phase = localPhase(); }, 5000);
+// 立刻同步一次，避免初相停在 serverPhase
+state.phase = localPhase();
 
 api('/api/status').then((s) => {
   if (!s.llm.startsWith('glm')) $('#joinNote').textContent = '提示：未配置 GLM_API_KEY，居民对话为离线模式（配置后更生动）';
