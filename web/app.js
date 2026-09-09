@@ -1,11 +1,13 @@
 // 树洞谷前端：入住流程 → 游戏循环 → 对话/面板/SSE
 import { createGame, TILE, SCALE } from './engine/game.js';
+import { createAudio } from './engine/audio.js';
 import { makeCharacterSheet, makeAvatar } from './engine/sprite.js';
 
 const $ = (s) => document.querySelector(s);
 const canvas = $('#game');
 
 const state = {
+  audio: null,
   token: sessionStorage.getItem('sv_token') || '',
   player: JSON.parse(sessionStorage.getItem('sv_player') || 'null'),
   world: null, game: null,
@@ -73,6 +75,10 @@ async function enterWorld() {
   }
   $('#hud').hidden = false;
   $('#hint').hidden = false;
+  state.audio = createAudio();
+  const unlock = () => { state.audio.onFirstInteract(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); };
+  window.addEventListener('pointerdown', unlock);
+  window.addEventListener('keydown', unlock);
   setTimeout(() => $('#hint').remove(), 9000);
   resize();
 
@@ -84,6 +90,14 @@ async function enterWorld() {
     onFragment: (f) => { toast(`✨ 捡到一枚灵感碎片（${collectCount()}/${state.game.frags.length}）`); }
   });
   state.game.setPlayer(state.player);
+  window.__svGame = state.game;
+  const forced = new URLSearchParams(location.search).get('weather');
+  if (forced === 'rain' && state.game.forceWeather) state.game.forceWeather(true);
+  if (forced === 'sun' && state.game.forceWeather) state.game.forceWeather(false);
+  state.game.setAudioHooks && state.game.setAudioHooks({
+    step: () => state.audio.stepWhileMoving(true),
+    pickup: () => state.audio.sfx.pickup()
+  });
 
   // E 键交互（keydown 去重，避免 keydown 自动重复连续触发）
   let eHeld = false;
@@ -105,8 +119,20 @@ async function enterWorld() {
   canvas.addEventListener('click', (e) => state.game.clickMove(e));
 
   // HUD 面板
-  document.querySelectorAll('.hbtn').forEach((b) => { b.onclick = () => openPanel(b.dataset.panel); });
+  document.querySelectorAll('.hbtn[data-panel]').forEach((b) => { b.onclick = () => openPanel(b.dataset.panel); });
+  $('#muteBtn').onclick = () => {
+    const m = state.audio.toggleMute();
+    $('#muteBtn').textContent = m ? '🔇' : '🔊';
+  };
+  $('#muteBtn').textContent = state.audio.isMuted() ? '🔇' : '🔊';
   $('#panelClose').onclick = closePanel;
+
+  // 天气→雨声联动
+  setInterval(() => {
+    if (state.audio && state.game && state.game.weatherState) {
+      state.audio.setRain(state.game.weatherState.raining);
+    }
+  }, 1500);
 
   // 区域与时段显示
   setInterval(() => {

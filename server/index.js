@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildMap, areaAt, isWalkable, AREA_LABELS, PROPS, BIG_TREES } from './world/map.js';
+import { buildMap, areaAt, isWalkable, AREA_LABELS, PROPS, BIG_TREES, fragSpots } from './world/map.js';
 import { RESIDENTS, RESIDENT_MAP, CHAT_PAIRS } from './world/residents-data.js';
 import { residentReply, reflect } from './engines/chat.js';
 import { designResident, validateDesc } from './engines/custom.js';
@@ -16,7 +16,10 @@ import { getHotList, getKnowledge, getKnowledgeDetail, mayorHotline } from './se
 const PORT = Number(process.env.PORT || 8787);
 const WEB_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 
-const world = buildMap();
+const WORLD_SEED = Number(process.env.WORLD_SEED || 20260913);
+const world = buildMap(WORLD_SEED);
+world.__seed = WORLD_SEED;
+const TOWN = world.townOffset;
 
 // ---------- 会话（JSON 落盘，服务重启不丢） ----------
 const players = new Map(); // token -> {id, name, archetype, hair, cloth, skin}
@@ -81,7 +84,10 @@ async function handleApi(req, res, url) {
       W: world.grid[0].length, H: world.grid.length,
       grid: world.grid, tiles: world.tiles,
       buildings, spawn: world.spawn,
-      areas: AREA_LABELS, props: PROPS, bigTrees: BIG_TREES,
+      areas: AREA_LABELS,
+      props: PROPS.map((p) => ({ ...p, x: p.x + TOWN.x, y: p.y + TOWN.y })),
+      bigTrees: BIG_TREES.map(([x, y]) => [x + TOWN.x, y + TOWN.y]),
+      fragSpots: fragSpots(world),
       residents: allResidents().map((r) => ({
         id: r.id, name: r.name, title: r.title, archetype: r.archetype,
         cloth: r.cloth, hair: r.hair, skin: r.skin,

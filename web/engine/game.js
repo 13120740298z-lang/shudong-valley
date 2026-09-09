@@ -5,6 +5,7 @@ import {
   paintTile, makeTree, makeBuilding, makeLantern, makeBench, makeWell, makeSign, makeRock, makeBush,
   makeCharacterSheet, CHAR_W, CHAR_H
 } from './sprite.js';
+import { createWeather } from './weather.js';
 
 export const TILE = 16, SCALE = 3;
 const WALK_MS = 170;
@@ -36,8 +37,9 @@ export function createGame(canvas, world, opts) {
   let waterFrame = 0;
   function paintStatic() {
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) paintTile(sc, g[y][x], x, y, tiles, waterFrame);
-    // 公告栏（广场北，贴地）
-    const bx = 22 * TILE, by = 14 * TILE;
+    // 公告栏（广场北，贴地，随镇区偏移）
+    const TN = world.townOffset || { x: 0, y: 0 };
+    const bx = (TN.x + 22) * TILE, by = (TN.y + 14) * TILE;
     sc.fillStyle = '#6B4A2B'; sc.fillRect(bx + 2, by + 6, 12, 10);
     sc.fillStyle = '#F2E7C8'; sc.fillRect(bx + 3, by + 7, 10, 7);
     sc.fillStyle = '#C4553B'; sc.fillRect(bx + 4, by + 8, 6, 2);
@@ -77,7 +79,7 @@ export function createGame(canvas, world, opts) {
     sheet: null, hair: '#2B2B3A'
   };
 
-  const FRAG_SPOTS = [[15, 13], [25, 12], [13, 24], [33, 25], [9, 13], [24, 24], [35, 21], [7, 17], [28, 20], [21, 25]];
+  const FRAG_SPOTS = world.fragSpots && world.fragSpots.length >= 10 ? world.fragSpots : [[15, 13], [25, 12], [13, 24], [33, 25], [9, 13], [24, 24], [35, 21], [7, 17], [28, 20], [21, 25]];
   const collected = new Set(JSON.parse(localStorage.getItem('sv_frags') || '[]'));
   const frags = FRAG_SPOTS.map(([x, y], i) => ({ i, x, y, taken: collected.has(i) }));
 
@@ -119,6 +121,7 @@ export function createGame(canvas, world, opts) {
     e.dir = nx > e.tx ? 'right' : nx < e.tx ? 'left' : ny > e.ty ? 'down' : 'up';
     e.moving = { fx0: e.fx, fy0: e.fy, fx1: nx, fy1: ny, t0: performance.now() };
     e.tx = nx; e.ty = ny;
+    if (e === player && audioHooks && audioHooks.step) audioHooks.step();
   }
 
   function walkPath(e) {
@@ -237,6 +240,7 @@ export function createGame(canvas, world, opts) {
   let smokeT = 0;
   const smokes = [];
   const fireflies = Array.from({ length: 8 }, (_, i) => ({ x: 6 + rnd01(i, 1) * 30, y: 6 + rnd01(i, 2) * 22, ph: i * 1.7 }));
+  const weather = createWeather(canvas);
   function rnd01(a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967295; }
 
   function drawSorted(c, now) {
@@ -321,6 +325,8 @@ export function createGame(canvas, world, opts) {
     c.fillText(ellipsis(c, text, w - 6), x, y - 3.5);
   }
 
+  let audioHooks = null;
+  let lastWeather = { raining: false, intensity: 0 };
   let last = performance.now();
   function tick(now) {
     const dt = Math.min(64, now - last); last = now;
@@ -346,6 +352,7 @@ export function createGame(canvas, world, opts) {
       if (!f.taken && Math.abs(player.fx - f.x) < 0.6 && Math.abs(player.fy - f.y) < 0.6) {
         f.taken = true; collected.add(f.i);
         localStorage.setItem('sv_frags', JSON.stringify([...collected]));
+        audioHooks && audioHooks.pickup && audioHooks.pickup();
         onFragment(f);
       }
     }
@@ -383,7 +390,7 @@ export function createGame(canvas, world, opts) {
     }
 
     // 夜晚：路灯 + 窗光 + 萤火虫
-    const night = phase === '夜晚' || phase === '深夜';
+    var night = phase === '夜晚' || phase === '深夜';
     if (phase === '黄昏') { c.fillStyle = 'rgba(255,140,60,.15)'; c.fillRect(camX, camY, vw, vh); }
     if (night) {
       c.fillStyle = 'rgba(18,28,72,.42)';
@@ -421,6 +428,11 @@ export function createGame(canvas, world, opts) {
 
     drawBubblesAndLabels(c);
     c.restore();
+
+    // 天气层（屏幕空间）
+    const wres = weather.updateAndDraw(c, now, dt, night);
+    lastWeather = wres;
+    opts.onWeather && opts.onWeather(wres);
   }
   function loop(now) { tick(now); raf = requestAnimationFrame(loop); }
   let raf = requestAnimationFrame(loop);
@@ -436,6 +448,9 @@ export function createGame(canvas, world, opts) {
     },
     npcs,
     frags,
+    setAudioHooks(h) { audioHooks = h; },
+    forceWeather(rain) { weather.force(rain); },
+    get weatherState() { return lastWeather; },
     nearNpc() {
       let best = null, bd = 2.2;
       for (const n of npcs) {

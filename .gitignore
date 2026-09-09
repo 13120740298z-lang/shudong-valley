@@ -2,5 +2,11 @@ node server.log
 server/*.log
 server/data/
 docs/dev-log.md
-.DS_Store
+.agents/
+.claude/
+skills/
+meowa-out/
+.env.meowa
 *.log
+.DS_Store
+web/audio/
