@@ -83,15 +83,16 @@ async function handleApi(req, res, url) {
     return json(res, 200, {
       W: world.grid[0].length, H: world.grid.length,
       grid: world.grid, tiles: world.tiles,
-      buildings, spawn: world.spawn,
+      buildings, spawn: world.spawn, plaza: world.plaza,
       areas: AREA_LABELS,
       props: PROPS.map((p) => ({ ...p, x: p.x + TOWN.x, y: p.y + TOWN.y })),
       bigTrees: BIG_TREES.map(([x, y]) => [x + TOWN.x, y + TOWN.y]),
+      cottages: (world.cottages || []).map((c) => ({ ...c, x: c.x + TOWN.x, y: c.y + TOWN.y })),
       fragSpots: fragSpots(world),
       residents: allResidents().map((r) => ({
         id: r.id, name: r.name, title: r.title, archetype: r.archetype,
         cloth: r.cloth, hair: r.hair, skin: r.skin,
-        schedule: r.schedule, greeting: r.greeting || r.samples?.[0] || '', custom: Boolean(r.custom),
+        schedule: r.schedule, activities: r.activities || null, greeting: r.greeting || r.samples?.[0] || '', custom: Boolean(r.custom),
         avatar: r.custom ? null : `/avatars/${r.archetype}.png`
       })),
       serverPhase: phaseOf(new Date())

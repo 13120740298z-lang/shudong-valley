@@ -443,7 +443,7 @@ export function makeBuilding(kind, seed = 0) {
   c.fillStyle = 'rgba(0,0,0,.18)';
   c.fillRect(bx - 4, groundY, w + 8, 3);
 
-  return { cv, ax: bx, ay: groundY, anchorTileY: 4 }; // anchorTileY=建筑占地底边（tile 行数）
+  return { cv, ax: bx, ay: groundY, chimneys };
 }
 
 // --- 路灯 ---
@@ -471,6 +471,31 @@ export function makeBench() {
   c.fillStyle = PAL.woodDark; c.fillRect(3, 9, 2, 7); c.fillRect(23, 9, 2, 7);
   c.fillStyle = PAL.woodDark; c.fillRect(2, 10, 24, 1);
   return { cv, ax: 14, ay: 17 };
+}
+
+// --- 喷泉（广场 C 位，参考 AI 星露谷同款）：石基双层水池+中央喷柱+水花 ---
+export function makeFountain() {
+  const { cv, c } = makeCanvas(48, 44);
+  c.fillStyle = 'rgba(0,0,0,.18)';
+  c.beginPath(); c.ellipse(24, 41, 20, 4, 0, 0, Math.PI * 2); c.fill();
+  // 外池
+  c.fillStyle = PAL.stoneDark; c.beginPath(); c.ellipse(24, 33, 21, 9, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = PAL.stone; c.beginPath(); c.ellipse(24, 31, 21, 9, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = PAL.stoneLight; c.beginPath(); c.ellipse(24, 30, 19, 7, 0, 0, Math.PI * 2); c.fill();
+  // 池水
+  c.fillStyle = PAL.water[0]; c.beginPath(); c.ellipse(24, 31, 17, 6, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = PAL.water[2]; c.fillRect(14, 29, 6, 1); c.fillRect(28, 32, 6, 1);
+  // 中池
+  c.fillStyle = PAL.stone; c.beginPath(); c.ellipse(24, 24, 9, 5, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = PAL.water[0]; c.beginPath(); c.ellipse(24, 23, 7, 3.5, 0, 0, Math.PI * 2); c.fill();
+  // 喷柱
+  c.fillStyle = PAL.stoneDark; c.fillRect(22, 12, 4, 12);
+  c.fillStyle = PAL.stoneLight; c.fillRect(22, 12, 2, 12);
+  c.fillStyle = PAL.water[3];
+  // 顶珠
+  c.beginPath(); c.arc(24, 10, 3.4, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#FFFFFF'; c.fillRect(23, 8, 2, 2);
+  return { cv, ax: 24, ay: 42 };
 }
 
 // --- 水井 ---

@@ -21,6 +21,7 @@ export const RESIDENTS = [
       evening: { x: 33, y: 23, label: '湖边' },
       night: { x: 12, y: 13, label: '图书馆' }
     },
+    activities: { morning: '背肖四第 3 遍', noon: '排队买日落面包', evening: '在湖边背单词', night: '整理错题本' },
     memorySeed: '和阿卷聊过的人，大多被反问"你最近在纠结什么"。'
   },
   {
@@ -41,6 +42,7 @@ export const RESIDENTS = [
       evening: { x: 30, y: 11, label: '老盐酒馆' },
       night: { x: 21, y: 8, label: '镇公所' }
     },
+    activities: { morning: '给菜地做需求评审', noon: '在广场晒太阳', evening: '酒馆讲大厂往事', night: '研究种菜攻略' },
     memorySeed: '强哥的菜地最近丰收，他归功于"需求评审做得好"。'
   },
   {
@@ -61,6 +63,7 @@ export const RESIDENTS = [
       evening: { x: 28, y: 22, label: '桥上' },
       night: { x: 30, y: 11, label: '老盐酒馆' }
     },
+    activities: { morning: '在长椅上观察路人', noon: '湖边想第七件事', evening: '在桥上看夕阳', night: '酒馆听故事' },
     memorySeed: '老桥正在写一篇《北漂五年教会我的十件事》，卡在第七件。'
   },
   {
@@ -81,6 +84,7 @@ export const RESIDENTS = [
       evening: { x: 30, y: 11, label: '老盐酒馆' },
       night: { x: 6, y: 18, label: '花田' }
     },
+    activities: { morning: '在花田写生', noon: '给面包房画招牌', evening: '酒馆吹牛', night: '改第八版简历' },
     memorySeed: '小麦的插画接了第一单大活，她还没敢告诉任何人价格。'
   },
   {
@@ -101,6 +105,7 @@ export const RESIDENTS = [
       evening: { x: 30, y: 11, label: '老盐酒馆' },
       night: { x: 21, y: 8, label: '镇公所' }
     },
+    activities: { morning: '写今天的通知', noon: '广场遛弯', evening: '酒馆下棋', night: '锁镇公所的门' },
     memorySeed: '老周在策划"树洞谷秋日故事会"，缺一个敢上台的人。'
   },
   {
@@ -121,6 +126,7 @@ export const RESIDENTS = [
       evening: { x: 30, y: 11, label: '老盐酒馆' },
       night: { x: 12, y: 13, label: '图书馆' }
     },
+    activities: { morning: '给新书上架', noon: '广场看鸽子', evening: '编故事的结尾', night: '读脑洞小说' },
     memorySeed: '小盐在写一个"小镇里所有人交换人生一天"的故事。'
   },
   {
@@ -141,6 +147,7 @@ export const RESIDENTS = [
       evening: { x: 33, y: 23, label: '湖边' },
       night: { x: 30, y: 11, label: '老盐酒馆' }
     },
+    activities: { morning: '等鱼上班', noon: '继续等鱼上班', evening: '数今天的鱼', night: '想鱼为什么不上班' },
     memorySeed: '阿漂的鱼护里其实只有三条鱼，但他觉得够了。'
   },
   {
@@ -161,6 +168,7 @@ export const RESIDENTS = [
       evening: { x: 10, y: 19, label: '面包房' },
       night: { x: 30, y: 11, label: '老盐酒馆' }
     },
+    activities: { morning: '揉今天的面团', noon: '给阿卷留日落面包', evening: '研发低糖面包', night: '盘点面粉' },
     memorySeed: '麦芽在研发一款"考研人特供"的低糖面包，还没想好名字。'
   }
 ];

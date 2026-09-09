@@ -2,7 +2,7 @@
 // 世界数据由 /api/world 获取
 
 import {
-  paintTile, makeTree, makeBuilding, makeLantern, makeBench, makeWell, makeSign, makeRock, makeBush,
+  paintTile, makeTree, makeBuilding, makeLantern, makeBench, makeWell, makeSign, makeRock, makeBush, makeFountain,
   makeCharacterSheet, CHAR_W, CHAR_H
 } from './sprite.js';
 import { createWeather } from './weather.js';
@@ -24,6 +24,8 @@ export function fitScreen(canvas) {
 }
 
 export function createGame(canvas, world, opts) {
+  let audioHooks = null;
+  let lastWeather = { raining: false, intensity: 0 };
   const { onFragment } = opts;
   const { grid, tiles, W, H } = world;
   const g = grid;
@@ -39,9 +41,16 @@ export function createGame(canvas, world, opts) {
     Object.entries(world.buildings).map(([k, b]) => [k, { ...b, key: k, sp: makeBuilding(k) }])
   );
   const propSprites = {
-    lantern: makeLantern(), bench: makeBench(), well: makeWell(),
+    lantern: makeLantern(), bench: makeBench(), well: makeWell(), fountain: makeFountain(),
     sign: makeSign(), rock: makeRock(), bush: makeBush()
   };
+  // AI 生成小屋精灵（96px 高 ≈ 6 tile，占地 3×3 碰撞）
+  const cottageSprites = {};
+  for (const c of world.cottages || []) {
+    const img = new Image();
+    img.src = `/cottages/${c.id}.png`;
+    cottageSprites[c.id] = img;
+  }
 
   // ---------- 静态地表层 ----------
   const staticCv = document.createElement('canvas');
@@ -82,7 +91,7 @@ export function createGame(canvas, world, opts) {
     tx: r.schedule.morning.x, ty: r.schedule.morning.y,
     fx: r.schedule.morning.x, fy: r.schedule.morning.y,
     dir: 'down', frame: 0, animT: 0,
-    moving: null, path: [], wanderT: 0, greetedT: 0, bubble: null
+    moving: null, path: [], wanderT: 0, greetedT: 0, activityT: 8000 + Math.random() * 12000, bubble: null
   }));
 
   const player = {
@@ -220,6 +229,13 @@ export function createGame(canvas, world, opts) {
         const pool = n.greeting ? [n.greeting] : (n.greetings || ['……']);
         n.bubble = { text: pool[Math.floor(Math.random() * pool.length)], t: 4200 };
       }
+      // 行为气泡：AI 小镇式的"正在做什么"
+      n.activityT -= dt;
+      if (n.activityT <= 0 && !n.bubble && !opts.dialogOpen()) {
+        n.activityT = 16000 + Math.random() * 20000;
+        const acts = n.activities && n.activities[phaseMap(phase)];
+        if (acts) n.bubble = { text: '· ' + acts + ' ·', t: 5000 };
+      }
       if (n.bubble) { n.bubble.t -= dt; if (n.bubble.t <= 0) n.bubble = null; }
     }
   }
@@ -251,10 +267,33 @@ export function createGame(canvas, world, opts) {
     c.restore();
   }
 
-  // 烟囱粒子源（由建筑精灵登记）
+  // 黑猫（广场彩蛋）：慢速游荡，偶尔坐下
+  const cat = { x: world.plaza.x + 2, y: world.plaza.y - 1, dir: 1, t: 0, sit: 0 };
+  function drawCat(c, now) {
+    const px = cat.x * TILE, py = cat.y * TILE;
+    c.save();
+    c.translate(px, py);
+    if (cat.dir < 0) { c.scale(-1, 1); }
+    const bob = cat.sit > 0 ? 0 : Math.sin(now / 180) * 0.6;
+    // 身体
+    c.fillStyle = '#26232B';
+    c.fillRect(-5, -6 + bob, 10, 5);
+    // 头
+    c.fillRect(-4, -11 + bob, 7, 6);
+    // 耳朵
+    c.fillRect(-4, -13 + bob, 2, 2); c.fillRect(1, -13 + bob, 2, 2);
+    // 眼睛（黄）
+    c.fillStyle = '#F2C14E'; c.fillRect(-2, -9 + bob, 1, 1); c.fillRect(1, -9 + bob, 1, 1);
+    // 尾巴
+    c.fillStyle = '#26232B';
+    const tw = Math.sin(now / 300) * 2;
+    c.fillRect(4, -4 + bob, 1, 4 + tw * 0.5); c.fillRect(5, -6 + bob + tw * 0.4, 1, 3);
+    c.restore();
+  }
+
   const chimneys = Object.values(buildingSprites).flatMap((b) => {
     const dx = b.x * TILE - 12, dy = b.y * TILE - 46;
-    return (b.sp.chimneys || []).map(([cx2, cy2]) => ({ wx: dx + cx2 + 5, wy: dy + cy2 }));
+    return ((b.sp && b.sp.chimneys) || b.chimneys || []).map(([cx2, cy2]) => ({ wx: dx + cx2 + 5, wy: dy + cy2 }));
   });
   let smokeT = 0;
   const smokes = [];
@@ -269,6 +308,14 @@ export function createGame(canvas, world, opts) {
         ay: b.y * TILE + 64,
         draw: () => c.drawImage(b.sp.cv, b.x * TILE - 12, b.y * TILE - 46)
       });
+    }
+    for (const co of world.cottages || []) {
+      const img = cottageSprites[co.id];
+      if (!img || !img.complete) continue;
+      // 锚点：占地 3×3 tile，精灵底边对齐占地底边，水平居中
+      const px = co.x * TILE + 24 - img.width / 2;
+      const py = (co.y + 3) * TILE - img.height;
+      items.push({ ay: (co.y + 3) * TILE - 2, draw: () => c.drawImage(img, Math.round(px), Math.round(py)) });
     }
     for (const [tx, ty] of world.bigTrees || []) {
       const sp = treeSprites[(tx * 7 + ty * 3) % 3];
@@ -344,8 +391,6 @@ export function createGame(canvas, world, opts) {
     c.fillText(ellipsis(c, text, w - 6), x, y - 3.5);
   }
 
-  let audioHooks = null;
-  let lastWeather = { raining: false, intensity: 0 };
   let last = performance.now();
   function tick(now) {
     const dt = Math.min(64, now - last); last = now;
@@ -461,13 +506,23 @@ export function createGame(canvas, world, opts) {
     player,
     setPlayer(p) { player.name = p.name; player.hair = p.hair; player.sheet = makeCharacterSheet({ hair: p.hair, cloth: '#EAF0FF', skin: '#F2C9A0' }); },
     addNpc(r) {
-      const n = { ...r, sheet: makeCharacterSheet(r), tx: r.schedule.morning.x, ty: r.schedule.morning.y, fx: r.schedule.morning.x, fy: r.schedule.morning.y, dir: 'down', frame: 0, animT: 0, moving: null, path: [], wanderT: 0, greetedT: 0, bubble: null };
+      const n = { ...r, sheet: makeCharacterSheet(r), tx: r.schedule.morning.x, ty: r.schedule.morning.y, fx: r.schedule.morning.x, fy: r.schedule.morning.y, dir: 'down', frame: 0, animT: 0, moving: null, path: [], wanderT: 0, greetedT: 0, activityT: 8000 + Math.random() * 12000, bubble: null };
       npcs.push(n);
       return n;
     },
     npcs,
     frags,
     setAudioHooks(h) { audioHooks = h; },
+    showResidentChat(aName, bName, lines) {
+      const a = npcs.find((n) => n.name === aName), b = npcs.find((n) => n.name === bName);
+      if (!a || !b) return;
+      const msg = lines.slice(0, 3);
+      msg.forEach((text, i) => {
+        const who = i % 2 === 0 ? a : b;
+        setTimeout(() => { who.bubble = { text, t: 3400 }; }, i * 2200);
+      });
+      a.path = b.path = [];
+    },
     forceWeather(rain) { weather.force(rain); },
     get weatherState() { return lastWeather; },
     nearNpc() {

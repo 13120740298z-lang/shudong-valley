@@ -148,7 +148,10 @@ async function enterWorld() {
     try {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'hello') state.phase = msg.phase || state.phase;
-      if (msg.type === 'chat') showTicker(`💬 ${msg.lines.join('　')}`);
+      if (msg.type === 'chat') {
+        showTicker(`💬 ${msg.lines.join('　')}`);
+        if (state.game && state.game.showResidentChat) state.game.showResidentChat(msg.a, msg.b, msg.lines);
+      }
       if (msg.type === 'sys') toast(msg.text);
     } catch {}
   };

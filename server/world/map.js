@@ -82,7 +82,7 @@ export function buildMap(seed = 20260913) {
     grassVariation.push(row);
   }
 
-  return { grid: g, tiles: T, buildings, grassVariation, spawn: { x: TX + 6, y: TY + 26 }, plaza: { x: TX + 20, y: TY + 17 }, townOffset: { x: TX, y: TY } };
+  return { grid: g, tiles: T, buildings, cottages: town.cottages, grassVariation, spawn: { x: TX + 6, y: TY + 26 }, plaza: { x: TX + 20, y: TY + 17 }, townOffset: { x: TX, y: TY } };
 }
 
 // ---------- 镇区手工布局（原逻辑平移，不再含边界树墙） ----------
@@ -135,6 +135,25 @@ function buildTown(seed) {
   }
 
   for (let y = 16; y <= 20; y++) for (let x = 5; x <= 7; x++) if (g[y][x] === T.GRASS) g[y][x] = T.FLOWER;
+
+  // 六栋居民小屋（AI 生成精灵，3×3 占地碰撞），围绕路网错落分布
+  const cottages = [
+    { id: 'cottage1', x: 3,  y: 8  },
+    { id: 'cottage2', x: 24, y: 8  },
+    { id: 'cottage3', x: 14, y: 24 },
+    { id: 'cottage4', x: 24, y: 27 },
+    { id: 'cottage5', x: 36, y: 24 },
+    { id: 'cottage6', x: 5,  y: 29 }
+  ];
+  for (const c of cottages) {
+    for (let y = c.y; y < c.y + 3 && y < 32; y++) for (let x = c.x; x < c.x + 3 && x < 42; x++) {
+      if (g[y][x] === T.GRASS || g[y][x] === T.FLOWER || g[y][x] === T.SAND) g[y][x] = T.WALL;
+    }
+    // 门前横向踏面（2 格，防死区）
+    for (let dx = 0; dx < 3; dx++) {
+      if (g[c.y + 3] && g[c.y + 3][c.x + dx] !== undefined && g[c.y + 3][c.x + dx] !== T.WATER) g[c.y + 3][c.x + dx] = T.PATH;
+    }
+  }
   const flowers = [[15, 12], [24, 12], [26, 20], [13, 24], [33, 25], [9, 12], [22, 24], [27, 14]];
   for (const [x, y] of flowers) if (g[y][x] === T.GRASS) g[y][x] = T.FLOWER;
   // 噪声花丛（镇区内）
@@ -153,7 +172,7 @@ function buildTown(seed) {
   for (let y = 25; y <= 27; y++) for (let x = 5; x <= 8; x++) if (g[y][x] === T.TREE || g[y][x] === T.FLOWER) g[y][x] = T.GRASS;
   for (let y = 25; y <= 26; y++) for (let x = 6; x <= 7; x++) g[y][x] = T.PATH;
 
-  return { grid: g, buildings };
+  return { grid: g, buildings, cottages };
 }
 
 export const AREA_LABELS = {
@@ -211,7 +230,7 @@ export const PROPS = [
   { kind: 'lantern', x: 16.5, y: 20 }, { kind: 'lantern', x: 23.5, y: 20 },
   { kind: 'lantern', x: 14, y: 14 }, { kind: 'lantern', x: 26, y: 14 },
   { kind: 'bench', x: 18.5, y: 16 }, { kind: 'bench', x: 21.5, y: 16 },
-  { kind: 'well', x: 20, y: 17 },
+  { kind: 'fountain', x: 20, y: 17 },
   { kind: 'sign', x: 8, y: 24 }, { kind: 'sign', x: 30, y: 21 },
   { kind: 'rock', x: 10.5, y: 11.5 }, { kind: 'rock', x: 25.5, y: 22.5 }, { kind: 'rock', x: 36.5, y: 13.5 },
   { kind: 'bush', x: 13.5, y: 24.5 }, { kind: 'bush', x: 31.5, y: 8.5 }, { kind: 'bush', x: 7.5, y: 13.5 },
