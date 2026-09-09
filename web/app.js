@@ -1,5 +1,5 @@
 // 树洞谷前端：入住流程 → 游戏循环 → 对话/面板/SSE
-import { createGame, TILE, SCALE } from './engine/game.js';
+import { createGame, TILE, fitScreen } from './engine/game.js';
 import { createAudio } from './engine/audio.js';
 import { makeCharacterSheet, makeAvatar } from './engine/sprite.js';
 
@@ -174,7 +174,10 @@ function collectCount() {
 
 const avatars = new Map();
 function avatarOf(r) {
-  if (!avatars.has(r.id)) avatars.set(r.id, makeAvatar(makeCharacterSheet(r)));
+  if (!avatars.has(r.id)) {
+    const url = r.avatar && !r.custom ? r.avatar : makeAvatar(makeCharacterSheet(r));
+    avatars.set(r.id, url);
+  }
   return avatars.get(r.id);
 }
 
@@ -362,10 +365,7 @@ function showTicker(text) {
   clearTimeout(tickerTimer);
   tickerTimer = setTimeout(() => { el.hidden = true; }, 8000);
 }
-function resize() {
-  canvas.width = Math.floor(window.innerWidth / SCALE) * SCALE;
-  canvas.height = Math.floor(window.innerHeight / SCALE) * SCALE;
-}
+function resize() { fitScreen(canvas); }
 window.addEventListener('resize', resize);
 
 // 时段跟随本地时钟（与服务端一致口径）

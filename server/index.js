@@ -91,7 +91,8 @@ async function handleApi(req, res, url) {
       residents: allResidents().map((r) => ({
         id: r.id, name: r.name, title: r.title, archetype: r.archetype,
         cloth: r.cloth, hair: r.hair, skin: r.skin,
-        schedule: r.schedule, greeting: r.greeting || r.samples?.[0] || '', custom: Boolean(r.custom)
+        schedule: r.schedule, greeting: r.greeting || r.samples?.[0] || '', custom: Boolean(r.custom),
+        avatar: r.custom ? null : `/avatars/${r.archetype}.png`
       })),
       serverPhase: phaseOf(new Date())
     });

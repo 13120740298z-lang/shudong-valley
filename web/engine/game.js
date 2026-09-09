@@ -7,8 +7,21 @@ import {
 } from './sprite.js';
 import { createWeather } from './weather.js';
 
-export const TILE = 16, SCALE = 3;
+export const TILE = 16;
+export let SCALE = 3; // fitScreen 按窗口动态设定（整数倍，保像素锐利）
 const WALK_MS = 170;
+// 电脑端显示工程：锁定视野约 26×15 tile，整数倍缩放，画面居中（四周留黑边）
+const VIEW_W_TILES = 26, VIEW_H_TILES = 15;
+export function fitScreen(canvas) {
+  SCALE = Math.max(1, Math.min(
+    Math.floor(window.innerWidth / (VIEW_W_TILES * TILE)),
+    Math.floor(window.innerHeight / (VIEW_H_TILES * TILE))
+  ));
+  canvas.width = VIEW_W_TILES * TILE * SCALE;
+  canvas.height = VIEW_H_TILES * TILE * SCALE;
+  canvas.style.width = canvas.width + 'px';
+  canvas.style.height = canvas.height + 'px';
+}
 
 export function createGame(canvas, world, opts) {
   const { onFragment } = opts;
@@ -161,8 +174,13 @@ export function createGame(canvas, world, opts) {
     const sx = evt.clientX - rect.left, sy = evt.clientY - rect.top;
     const wx = camX + sx / SCALE, wy = camY + sy / SCALE;
     const tx = Math.floor(wx / TILE), ty = Math.floor(wy / TILE);
-    const npc = npcs.find((n) => Math.abs(n.fx - tx) < 0.6 && Math.abs(n.fy - ty) < 0.9);
-    if (npc) { opts.onNpcClick(npc); return; }
+    // 点击命中：点击点 1.2 tile 内最近居民直接对话（脚底判定更宽容）
+    let hit = null, hd = 1.2;
+    for (const n of npcs) {
+      const d = Math.hypot(n.fx - tx, (n.fy + 0.4) - ty);
+      if (d < hd) { hd = d; hit = n; }
+    }
+    if (hit) { opts.onNpcClick(hit); return; }
     const path = findPath(player.tx, player.ty, tx, ty);
     if (path) player.path = path;
   }
@@ -210,8 +228,9 @@ export function createGame(canvas, world, opts) {
   let camX = 0, camY = 0;
   function updateCamera() {
     const vw = canvas.width / SCALE, vh = canvas.height / SCALE;
-    camX = Math.max(0, Math.min(W * TILE - vw, player.fx * TILE + TILE / 2 - vw / 2));
-    camY = Math.max(0, Math.min(H * TILE - vh, player.fy * TILE + TILE / 2 - vh / 2));
+    const worldW = W * TILE, worldH = H * TILE;
+    camX = worldW <= vw ? (worldW - vw) / 2 : Math.max(0, Math.min(worldW - vw, player.fx * TILE + TILE / 2 - vw / 2));
+    camY = worldH <= vh ? (worldH - vh) / 2 : Math.max(0, Math.min(worldH - vh, player.fy * TILE + TILE / 2 - vh / 2));
   }
 
   // ---------- 绘制 ----------
